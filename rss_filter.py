@@ -2,9 +2,9 @@
 
 import feedparser
 import feedgenerator
+import ftr
 
 from urllib.parse import urlparse
-# from collections import namedtuple
 
 
 class abstract_filter(object):
@@ -35,13 +35,35 @@ class link_contains(abstract_filter):
         return self.part in entry.link
 
 
-# TODO https://github.com/fivefilters/ftr-site-config
-# class content_filler(abstract_modder):
-#     pass
+class abstract_modder(object):
+    def mod(self, rss_entry, url):
+        """
+            Returns a tuple with the to update fields
+
+        """
+        raise NotImplementedError("Override this method!")
+
+    def update_entry(self, entry):
+        update = self.mod(entry, entry.link)
+        for name, value in update.items():
+            if name == 'content':
+                assert len(entry.content) == 1
+                entry.content[0].value = value
+                entry.content[0].type = 'application/xhtml+xml'
+        return entry
+
+
+class ftr_modder(abstract_modder):
+    def mod(self, rss, url):
+        extractor = ftr.process(url)
+
+        return {"content": extractor.body}
+
 
 feeds = {
     "https://www.heise.de/newsticker/heise-atom.xml":
-        (~ link_contains('techstage.de')) & (~ link_contains('heise.de/tr'))
+        [(~ link_contains('techstage.de')) & (~ link_contains('heise.de/tr')),
+         ftr_modder()]
 }
 
 def read_feed(url):
@@ -65,12 +87,25 @@ def generate_feed(f):
     return feed.writeString(encoding="UTF8")
 
 
+
 def main():
     for feed, fil in feeds.items():
         f = read_feed(feed)
 
-        new_entries = [e for e in f.entries
-                       if fil.match(e)]
+        if (isinstance(fil, abstract_filter) or
+                isinstance(fil, abstract_modder)):
+            fil = [fil]
+
+        if (not isinstance(fil, list)):
+            raise Exception("Wrong type of filter / modder")
+
+        new_entries = [e for e in f.entries]
+        for fsub in fil:
+            if isinstance(fsub, abstract_filter):
+                new_entries = [e for e in new_entries if fsub.match(e)]
+            elif isinstance(fsub, abstract_modder):
+                new_entries = [fsub.update_entry(e)
+                               for e in new_entries]
 
         f['entries'] = new_entries
         out = generate_feed(f)
