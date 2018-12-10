@@ -50,11 +50,14 @@ class abstract_modder(object):
                 assert len(entry.content) == 1
                 entry.content[0].value = value
                 entry.content[0].type = 'application/xhtml+xml'
+            else:
+                "Unknwon entry to update"
         return entry
 
 
 class ftr_modder(abstract_modder):
     def mod(self, rss, url):
+        print("modding url", url)
         extractor = ftr.process(url)
 
         return {"content": extractor.body}
@@ -82,7 +85,7 @@ def generate_feed(f):
         feed.add_item(
                 title=e.title,
                 link=e.link,
-                description=e.description)
+                description=e.content[0].value)
 
     return feed.writeString(encoding="UTF8")
 
